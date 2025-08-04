@@ -64,6 +64,140 @@ func exportJson() string {
 	return string(retval)
 }
 
+// Windows
+
+func openImportJsonWindow() {
+	// Import JSON window
+	importJsonWindow := a.NewWindow("Import JSON")
+	importJsonData := widget.NewMultiLineEntry()
+	importJsonForm := &widget.Form{
+		Items: []*widget.FormItem{
+			{Text: "JSON", Widget: importJsonData}},
+		OnSubmit: func() {
+			// Validate JSON
+			if json.Valid([]byte(importJsonData.Text)) != true {
+				titleLabel.SetText("Invalid JSON structure!")
+				titleLabel.Refresh()
+				go updateTitleLabelAfterMessage()
+				importJsonWindow.Close()
+				return
+			}
+			// Check if length of titles and descriptions is the same
+			var importedJson todoDataImportExportStruct
+			err := json.Unmarshal([]byte(importJsonData.Text), &importedJson)
+			if err != nil {
+				titleLabel.SetText(fmt.Sprintf("Failed to parse JSON: %s", err.Error()))
+				titleLabel.Refresh()
+				go updateTitleLabelAfterMessage()
+				importJsonWindow.Close()
+				return
+			}
+			if len(importedJson.TodoDataShortVal) != len(importedJson.TodoDataLongVal) {
+				titleLabel.SetText("JSON error: wrong length of arrays")
+				titleLabel.Refresh()
+				go updateTitleLabelAfterMessage()
+				importJsonWindow.Close()
+				return
+			}
+			// Add imported values to global slices
+			for _, v := range importedJson.TodoDataShortVal {
+				todoDataShort = append(todoDataShort, v)
+			}
+			for _, v := range importedJson.TodoDataLongVal {
+				todoDataLong = append(todoDataLong, v)
+			}
+			// Save data to device
+			// TODO move me to dedicated function
+			a.Preferences().SetStringList("todoListShort", todoDataShort)
+			a.Preferences().SetStringList("todoListLong", todoDataLong)
+			list.UnselectAll()
+			list.Refresh()
+			titleLabel.SetText(getUpdatedTitleLabel())
+			titleLabel.Refresh()
+			importJsonWindow.Close()
+		},
+	}
+
+	importJsonWindow.SetContent(importJsonForm)
+	importJsonWindow.ShowAndRun()
+}
+
+func openEntryEditWindow(i widget.ListItemID) {
+	// Entry edit window
+	entryEditWindow := a.NewWindow("Edit entry")
+	entryEditWindow.SetOnClosed(func() {
+		list.UnselectAll()
+	})
+	entryEditShort := widget.NewEntry()
+	entryEditShort.Append(todoDataShort[i])
+	entryEditLong := widget.NewMultiLineEntry()
+	entryEditLong.Append(todoDataLong[i])
+	entryEditDeleteButton := widget.NewButton("Delete entry", func() {
+		todoDataShort = slices.Delete(todoDataShort, i, i+1)
+		todoDataLong = slices.Delete(todoDataLong, i, i+1)
+		// Save data to device
+		// TODO move me to dedicated function
+		a.Preferences().SetStringList("todoListShort", todoDataShort)
+		a.Preferences().SetStringList("todoListLong", todoDataLong)
+		list.UnselectAll()
+		list.Refresh()
+		titleLabel.SetText(getUpdatedTitleLabel())
+		titleLabel.Refresh()
+		entryEditWindow.Close()
+	})
+
+	entryEditForm := &widget.Form{
+		Items: []*widget.FormItem{
+			{Text: "Entry", Widget: entryEditShort},
+			{Text: "Desc.", Widget: entryEditLong},
+			{Text: "", Widget: entryEditDeleteButton}},
+		OnSubmit: func() {
+			todoDataShort[i] = entryEditShort.Text
+			todoDataLong[i] = entryEditLong.Text
+			// Save data to device
+			// TODO move me to dedicated function
+			a.Preferences().SetStringList("todoListShort", todoDataShort)
+			a.Preferences().SetStringList("todoListLong", todoDataLong)
+			list.UnselectAll()
+			list.RefreshItem(i)
+			entryEditWindow.Close()
+		},
+		OnCancel: func() {
+			list.UnselectAll()
+			entryEditWindow.Close()
+		},
+	}
+
+	entryEditWindow.SetContent(entryEditForm)
+	entryEditWindow.ShowAndRun()
+}
+
+func openAddNewElementWindow() {
+	// Add new element window
+	newElementWindow := a.NewWindow("New entry")
+	newElementEntry := widget.NewEntry()
+	newElementDescription := widget.NewMultiLineEntry()
+	newElementForm := &widget.Form{
+		Items: []*widget.FormItem{
+			{Text: "Entry", Widget: newElementEntry},
+			{Text: "Desc.", Widget: newElementDescription}},
+		OnSubmit: func() {
+			todoDataShort = append(todoDataShort, newElementEntry.Text)
+			todoDataLong = append(todoDataLong, newElementDescription.Text)
+			// Save data to device
+			// TODO move me to dedicated function
+			a.Preferences().SetStringList("todoListShort", todoDataShort)
+			a.Preferences().SetStringList("todoListLong", todoDataLong)
+			list.Refresh()
+			titleLabel.SetText(getUpdatedTitleLabel())
+			titleLabel.Refresh()
+			newElementWindow.Close()
+		},
+	}
+	newElementWindow.SetContent(newElementForm)
+	newElementWindow.ShowAndRun()
+}
+
 func main() {
 	a = app.NewWithID("pl.mdukat.dukatodo")
 	w := a.NewWindow("TODO list app!")
@@ -80,18 +214,7 @@ func main() {
 		todoDataLong = append(todoDataLong, v)
 	}
 
-	// Backwards compatibility
-	// Version 1.0 supported only titles of entries
-	backCompatTodoLoaded := a.Preferences().StringList("todoList")
-	if len(backCompatTodoLoaded) > 0 {
-		for _, v := range backCompatTodoLoaded {
-			todoDataShort = append(todoDataShort, v)
-			todoDataLong = append(todoDataLong, "")
-		}
-		a.Preferences().SetStringList("todoListShort", todoDataShort)
-		a.Preferences().SetStringList("todoListLong", todoDataLong)
-		a.Preferences().RemoveValue("todoList")
-	}
+	RunBackwardsCompatibilityMigration()
 
 	// Main window
 	titleLabel = widget.NewLabel(getUpdatedTitleLabel())
@@ -101,62 +224,7 @@ func main() {
 		if len(jsonContent) > 0 {
 			cboard.SetContent(jsonContent)
 		}})
-	importJsonButton := widget.NewButtonWithIcon("", theme.LoginIcon(), func() {
-		// Import JSON window
-		// TODO move me to dedicated function
-		importJsonWindow := a.NewWindow("Import JSON")
-		importJsonData := widget.NewMultiLineEntry()
-		importJsonForm := &widget.Form{
-			Items: []*widget.FormItem{
-				{Text: "JSON", Widget: importJsonData}},
-			OnSubmit: func() {
-				// Validate JSON
-				if json.Valid([]byte(importJsonData.Text)) != true {
-					titleLabel.SetText("Invalid JSON structure!")
-					titleLabel.Refresh()
-					go updateTitleLabelAfterMessage()
-					importJsonWindow.Close()
-					return
-				}
-				// Check if length of titles and descriptions is the same
-				var importedJson todoDataImportExportStruct
-				err := json.Unmarshal([]byte(importJsonData.Text), &importedJson)
-				if err != nil {
-					titleLabel.SetText(fmt.Sprintf("Failed to parse JSON: %s", err.Error()))
-					titleLabel.Refresh()
-					go updateTitleLabelAfterMessage()
-					importJsonWindow.Close()
-					return
-				}
-				if len(importedJson.TodoDataShortVal) != len(importedJson.TodoDataLongVal) {
-					titleLabel.SetText("JSON error: wrong length of arrays")
-					titleLabel.Refresh()
-					go updateTitleLabelAfterMessage()
-					importJsonWindow.Close()
-					return
-				}
-				// Add imported values to global slices
-				for _, v := range importedJson.TodoDataShortVal {
-					todoDataShort = append(todoDataShort, v)
-				}
-				for _, v := range importedJson.TodoDataLongVal {
-					todoDataLong = append(todoDataLong, v)
-				}
-				// Save data to device
-				// TODO move me to dedicated function
-				a.Preferences().SetStringList("todoListShort", todoDataShort)
-				a.Preferences().SetStringList("todoListLong", todoDataLong)
-				list.UnselectAll()
-				list.Refresh()
-				titleLabel.SetText(getUpdatedTitleLabel())
-				titleLabel.Refresh()
-				importJsonWindow.Close()
-			},
-		}
-
-		importJsonWindow.SetContent(importJsonForm)
-		importJsonWindow.ShowAndRun()
-	})
+	importJsonButton := widget.NewButtonWithIcon("", theme.LoginIcon(), openImportJsonWindow)
 	
 	topBar := container.NewHBox(importJsonButton, exportJsonButton, titleLabel)
 	
@@ -170,85 +238,10 @@ func main() {
 		UpdateItem: func(i widget.ListItemID, o fyne.CanvasObject) {
 			o.(*widget.Label).SetText(todoDataShort[i])
 		},
-		OnSelected: func(i widget.ListItemID) {
-			// Entry edit window
-			// TODO move me to dedicated function
-			entryEditWindow := a.NewWindow("Edit entry")
-			entryEditWindow.SetOnClosed(func() {
-				list.UnselectAll()
-			})
-			entryEditShort := widget.NewEntry()
-			entryEditShort.Append(todoDataShort[i])
-			entryEditLong := widget.NewMultiLineEntry()
-			entryEditLong.Append(todoDataLong[i])
-			entryEditDeleteButton := widget.NewButton("Delete entry", func() {
-				todoDataShort = slices.Delete(todoDataShort, i, i+1)
-				todoDataLong = slices.Delete(todoDataLong, i, i+1)
-				// Save data to device
-				// TODO move me to dedicated function
-				a.Preferences().SetStringList("todoListShort", todoDataShort)
-				a.Preferences().SetStringList("todoListLong", todoDataLong)
-				list.UnselectAll()
-				list.Refresh()
-				titleLabel.SetText(getUpdatedTitleLabel())
-				titleLabel.Refresh()
-				entryEditWindow.Close()
-			})
-
-			entryEditForm := &widget.Form{
-				Items: []*widget.FormItem{
-					{Text: "Entry", Widget: entryEditShort},
-					{Text: "Desc.", Widget: entryEditLong},
-					{Text: "", Widget: entryEditDeleteButton}},
-				OnSubmit: func() {
-					todoDataShort[i] = entryEditShort.Text
-					todoDataLong[i] = entryEditLong.Text
-					// Save data to device
-					// TODO move me to dedicated function
-					a.Preferences().SetStringList("todoListShort", todoDataShort)
-					a.Preferences().SetStringList("todoListLong", todoDataLong)
-					list.UnselectAll()
-					list.RefreshItem(i)
-					entryEditWindow.Close()
-				},
-				OnCancel: func() {
-					list.UnselectAll()
-					entryEditWindow.Close()
-				},
-			}
-
-			entryEditWindow.SetContent(entryEditForm)
-			entryEditWindow.ShowAndRun()
-
-		},
+		OnSelected: openEntryEditWindow,
 	}
 	
-	newElementButton := widget.NewButton("Add new TODO element", func() {
-		// Add new element window
-		// TODO move me to dedicated function
-		newElementWindow := a.NewWindow("New entry")
-		newElementEntry := widget.NewEntry()
-		newElementDescription := widget.NewMultiLineEntry()
-		newElementForm := &widget.Form{
-			Items: []*widget.FormItem{
-				{Text: "Entry", Widget: newElementEntry},
-				{Text: "Desc.", Widget: newElementDescription}},
-			OnSubmit: func() {
-				todoDataShort = append(todoDataShort, newElementEntry.Text)
-				todoDataLong = append(todoDataLong, newElementDescription.Text)
-				// Save data to device
-				// TODO move me to dedicated function
-				a.Preferences().SetStringList("todoListShort", todoDataShort)
-				a.Preferences().SetStringList("todoListLong", todoDataLong)
-				list.Refresh()
-				titleLabel.SetText(getUpdatedTitleLabel())
-				titleLabel.Refresh()
-				newElementWindow.Close()
-			},
-		}
-		newElementWindow.SetContent(newElementForm)
-		newElementWindow.ShowAndRun()
-	})
+	newElementButton := widget.NewButton("Add new TODO element", openAddNewElementWindow)
 
 	content := container.NewBorder(topBar, newElementButton, nil, nil, list)
 	w.SetContent(content)
