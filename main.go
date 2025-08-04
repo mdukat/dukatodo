@@ -64,6 +64,13 @@ func exportJson() string {
 	return string(retval)
 }
 
+// Helpers
+
+func helperSaveList() {
+	fyne.CurrentApp().Preferences().SetStringList("todoListShort", todoDataShort)
+	fyne.CurrentApp().Preferences().SetStringList("todoListLong", todoDataLong)
+}
+
 // Windows
 
 func openImportJsonWindow() {
@@ -106,10 +113,9 @@ func openImportJsonWindow() {
 			for _, v := range importedJson.TodoDataLongVal {
 				todoDataLong = append(todoDataLong, v)
 			}
-			// Save data to device
-			// TODO move me to dedicated function
-			a.Preferences().SetStringList("todoListShort", todoDataShort)
-			a.Preferences().SetStringList("todoListLong", todoDataLong)
+
+			helperSaveList()
+
 			list.UnselectAll()
 			list.Refresh()
 			titleLabel.SetText(getUpdatedTitleLabel())
@@ -135,10 +141,9 @@ func openEntryEditWindow(i widget.ListItemID) {
 	entryEditDeleteButton := widget.NewButton("Delete entry", func() {
 		todoDataShort = slices.Delete(todoDataShort, i, i+1)
 		todoDataLong = slices.Delete(todoDataLong, i, i+1)
-		// Save data to device
-		// TODO move me to dedicated function
-		a.Preferences().SetStringList("todoListShort", todoDataShort)
-		a.Preferences().SetStringList("todoListLong", todoDataLong)
+		
+		helperSaveList()
+
 		list.UnselectAll()
 		list.Refresh()
 		titleLabel.SetText(getUpdatedTitleLabel())
@@ -154,10 +159,9 @@ func openEntryEditWindow(i widget.ListItemID) {
 		OnSubmit: func() {
 			todoDataShort[i] = entryEditShort.Text
 			todoDataLong[i] = entryEditLong.Text
-			// Save data to device
-			// TODO move me to dedicated function
-			a.Preferences().SetStringList("todoListShort", todoDataShort)
-			a.Preferences().SetStringList("todoListLong", todoDataLong)
+
+			helperSaveList()
+
 			list.UnselectAll()
 			list.RefreshItem(i)
 			entryEditWindow.Close()
@@ -184,10 +188,9 @@ func openAddNewElementWindow() {
 		OnSubmit: func() {
 			todoDataShort = append(todoDataShort, newElementEntry.Text)
 			todoDataLong = append(todoDataLong, newElementDescription.Text)
-			// Save data to device
-			// TODO move me to dedicated function
-			a.Preferences().SetStringList("todoListShort", todoDataShort)
-			a.Preferences().SetStringList("todoListLong", todoDataLong)
+
+			helperSaveList()
+
 			list.Refresh()
 			titleLabel.SetText(getUpdatedTitleLabel())
 			titleLabel.Refresh()
